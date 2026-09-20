@@ -1,0 +1,59 @@
+services:
+  backend:
+    image: examen-production-backend
+    build: ./backend
+    restart: unless-stopped
+    env_file: ${PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      DJANGO_SETTINGS_MODULE: backend.settings_production
+      DEBUG: 'False'
+      DB_ENGINE: postgres
+      GENERADOR_TMP_DIR: /var/lib/uml/generados
+      TRUST_PROXY_SSL_HEADER: 'true'
+    volumes:
+      - generated_files:/var/lib/uml/generados
+      - throttle_cache:/var/lib/uml/cache
+      - django_static:/app/staticfiles
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,urllib.request; req=urllib.request.Request('http://127.0.0.1:8000/api/health/',headers={'Host':os.environ['ALLOWED_HOSTS'].split(',')[0].strip(),'X-Forwarded-Proto':'https'}); urllib.request.urlopen(req,timeout=5).close()"
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+  frontend:
+    image: examen-production-frontend
+    build: ./frontend
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, wget, --spider, -q, 'http://127.0.0.1/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Define SITE_DOMAIN en .env.production}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - django_static:/srv/static:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+volumes:
+  generated_files:
+  throttle_cache:
+  django_static:
+  caddy_data:
+  caddy_config:

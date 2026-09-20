@@ -1,0 +1,59 @@
+package {{ paquete_base }}.entidades;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.hibernate.annotations.BatchSize;
+
+@Entity
+@Table(name = "{{ entidad.tabla }}")
+public class {{ entidad.nombre }} {
+{% for attr in entidad.atributos %}
+{% if attr.pk %}
+    @Id
+{% if attr.autogenerado %}
+    @GeneratedValue(strategy = GenerationType.{{ 'UUID' if attr.tipo == 'UUID' else 'IDENTITY' }})
+{% endif %}
+{% endif %}
+    @Column(name = "{{ attr.columna }}", nullable = {{ 'true' if attr.nullable else 'false' }}, unique = {{ 'true' if attr.unico else 'false' }}{% if attr.longitud %}, length = {{ attr.longitud }}{% endif %}{% if attr.texto_largo %}, columnDefinition = "text"{% endif %})
+    private {{ attr.tipo }} {{ attr.nombre }};
+{% endfor %}
+{% for rel in entidad.relaciones %}
+{% if rel.tipo == 'ManyToOne' %}
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "{{ rel.join }}", nullable = {{ 'false' if rel.required else 'true' }})
+{% elif rel.tipo == 'OneToMany' %}
+    @OneToMany(mappedBy = "{{ rel.otro_campo }}", fetch = FetchType.LAZY{% if rel.composition %}, cascade = CascadeType.ALL, orphanRemoval = true{% endif %})
+{% elif rel.tipo == 'OneToOne' and rel.owner %}
+    @OneToOne(fetch = FetchType.LAZY{% if rel.composition %}, cascade = CascadeType.ALL, orphanRemoval = true{% endif %})
+    @JoinColumn(name = "{{ rel.join }}", unique = true, nullable = {{ 'false' if rel.required else 'true' }})
+{% elif rel.tipo == 'OneToOne' %}
+    @OneToOne(mappedBy = "{{ rel.otro_campo }}", fetch = FetchType.LAZY)
+{% elif rel.owner %}
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "{{ rel.join_table }}", joinColumns = @JoinColumn(name = "source_id"), inverseJoinColumns = @JoinColumn(name = "target_id"))
+{% else %}
+    @ManyToMany(mappedBy = "{{ rel.otro_campo }}", fetch = FetchType.LAZY)
+{% endif %}
+{% if rel.many %}
+    @BatchSize(size = 50)
+{% endif %}
+    @JsonIgnore
+    private {% if rel.many %}List<{{ rel.otra_clase }}>{% else %}{{ rel.otra_clase }}{% endif %} {{ rel.campo }}{% if rel.many %} = new ArrayList<>(){% endif %};
+{% endfor %}
+
+    public {{ entidad.nombre }}() {}
+{% for attr in entidad.atributos %}
+    public {{ attr.tipo }} get{{ attr.getter }}() { return {{ attr.nombre }}; }
+    public void set{{ attr.getter }}({{ attr.tipo }} value) { this.{{ attr.nombre }} = value; }
+{% endfor %}
+{% for rel in entidad.relaciones %}
+    public {% if rel.many %}List<{{ rel.otra_clase }}>{% else %}{{ rel.otra_clase }}{% endif %} get{{ rel.getter }}() { return {{ rel.campo }}; }
+    public void set{{ rel.getter }}({% if rel.many %}List<{{ rel.otra_clase }}>{% else %}{{ rel.otra_clase }}{% endif %} value) { this.{{ rel.campo }} = value; }
+{% endfor %}
+}

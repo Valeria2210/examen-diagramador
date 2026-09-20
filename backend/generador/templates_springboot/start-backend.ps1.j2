@@ -1,0 +1,58 @@
+# Inicio local reproducible: construye Spring Boot y levanta API + PostgreSQL.
+[CmdletBinding()]
+param(
+    [ValidateRange(1, 65535)][int]$DatabasePort = 5433,
+    [ValidateRange(1, 65535)][int]$Port = 8080
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+function New-Secret {
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    return [Convert]::ToBase64String($bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=')
+}
+
+Push-Location $PSScriptRoot
+try {
+    if (-not (Get-Command docker -CommandType Application -ErrorAction SilentlyContinue)) {
+        throw 'Instala e inicia Docker Desktop.'
+    }
+    & docker info --format '{{ "{{.ServerVersion}}" }}'
+    if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop no está disponible.' }
+    & docker compose version
+    if ($LASTEXITCODE -ne 0) { throw 'Falta Docker Compose.' }
+
+    if (-not (Test-Path -LiteralPath '.env')) {
+        $databasePassword = New-Secret
+        $adminPassword = New-Secret
+        @(
+            'DB_USER=app'
+            "DB_PASSWORD=$databasePassword"
+            "DB_PORT=$DatabasePort"
+            "API_PORT=$Port"
+            'APP_ADMIN_USERNAME=admin'
+            "APP_ADMIN_PASSWORD=$adminPassword"
+            'APP_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173'
+            'APP_TOKEN_HOURS=24'
+        ) | Set-Content -LiteralPath '.env' -Encoding UTF8
+        Write-Host 'Se creó .env con credenciales locales aleatorias.'
+        Write-Host 'Administrador: admin'
+        Write-Host "Contraseña: $adminPassword"
+    }
+
+    $env:DB_PORT = [string]$DatabasePort
+    $env:API_PORT = [string]$Port
+    & docker compose --env-file .env up -d --build --wait
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudo iniciar el backend.' }
+    Write-Host "API: http://localhost:$Port"
+    Write-Host "Health: http://localhost:$Port/actuator/health"
+{% if incluir_swagger %}
+    Write-Host "Swagger: http://localhost:$Port/swagger-ui.html"
+{% endif %}
+    Write-Host 'Las credenciales locales están en .env; ese archivo no debe subirse a Git.'
+} finally {
+    Pop-Location
+}

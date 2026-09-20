@@ -1,0 +1,24 @@
+{$SITE_DOMAIN} {
+    encode gzip
+    request_body {
+        max_size 20MB
+    }
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+    handle /static/* {
+        root * /srv
+        file_server
+    }
+    @django path /api/* /admin/*
+    handle @django {
+        reverse_proxy backend:8000 {
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+    handle {
+        reverse_proxy frontend:80
+    }
+}

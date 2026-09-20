@@ -1,0 +1,122 @@
+{
+  "info": {
+    "name": "Diagramador UML - Backend Fase 1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api" },
+    { "key": "project_id", "value": "" },
+    { "key": "diagram_id", "value": "" },
+    { "key": "class1_id", "value": "" },
+    { "key": "class2_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Crear proyecto",
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "const data = pm.response.json();",
+          "pm.collectionVariables.set('project_id', data.id);"
+        ]}
+      }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sistema de Ventas\",\n  \"description\": \"Proyecto demo\"\n}" },
+        "url": "{{base_url}}/projects/"
+      }
+    },
+    {
+      "name": "2. Crear diagrama",
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "const data = pm.response.json();",
+          "pm.collectionVariables.set('diagram_id', data.id);"
+        ]}
+      }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"project\": {{project_id}},\n  \"name\": \"Diagrama principal\"\n}" },
+        "url": "{{base_url}}/diagrams/"
+      }
+    },
+    {
+      "name": "3. Crear clase Cliente",
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "const data = pm.response.json();",
+          "pm.collectionVariables.set('class1_id', data.id);"
+        ]}
+      }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"diagram\": {{diagram_id}},\n  \"name\": \"Cliente\",\n  \"kind\": \"CLASS\",\n  \"pos_x\": 100,\n  \"pos_y\": 100\n}" },
+        "url": "{{base_url}}/classes/"
+      }
+    },
+    {
+      "name": "4. Crear clase Pedido",
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "const data = pm.response.json();",
+          "pm.collectionVariables.set('class2_id', data.id);"
+        ]}
+      }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"diagram\": {{diagram_id}},\n  \"name\": \"Pedido\",\n  \"kind\": \"CLASS\",\n  \"pos_x\": 400,\n  \"pos_y\": 100\n}" },
+        "url": "{{base_url}}/classes/"
+      }
+    },
+    {
+      "name": "5. Agregar atributo 'nombre' a Cliente",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"uml_class\": {{class1_id}},\n  \"name\": \"nombre\",\n  \"data_type\": \"String\",\n  \"visibility\": \"PRIVATE\"\n}" },
+        "url": "{{base_url}}/attributes/"
+      }
+    },
+    {
+      "name": "6. Agregar atributo 'email' a Cliente",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"uml_class\": {{class1_id}},\n  \"name\": \"email\",\n  \"data_type\": \"String\",\n  \"visibility\": \"PRIVATE\"\n}" },
+        "url": "{{base_url}}/attributes/"
+      }
+    },
+    {
+      "name": "7. Agregar metodo 'getEmail' a Cliente",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"uml_class\": {{class1_id}},\n  \"name\": \"getEmail\",\n  \"return_type\": \"String\",\n  \"visibility\": \"PUBLIC\",\n  \"parameters\": []\n}" },
+        "url": "{{base_url}}/methods/"
+      }
+    },
+    {
+      "name": "8. Crear relacion Cliente 1 -> * Pedido",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"diagram\": {{diagram_id}},\n  \"source\": {{class1_id}},\n  \"target\": {{class2_id}},\n  \"relation_type\": \"ASSOCIATION\",\n  \"multiplicity_source\": \"1\",\n  \"multiplicity_target\": \"*\",\n  \"label\": \"realiza\"\n}" },
+        "url": "{{base_url}}/relations/"
+      }
+    },
+    {
+      "name": "9. Ver diagrama completo",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/diagrams/{{diagram_id}}/full/"
+      }
+    }
+  ]
+}

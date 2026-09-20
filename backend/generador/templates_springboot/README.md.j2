@@ -1,0 +1,87 @@
+{% if solo_entidades %}
+# {{ proyecto.nombre }} — entidades JPA
+
+Proyecto Java 17 con entidades JPA derivadas del diagrama. Compila con `mvn compile`.
+Este alcance no incluye API, seguridad ni ejecución local.
+{% else %}
+# {{ proyecto.nombre }} — backend Spring Boot para Flutter
+
+Backend Java 17 con PostgreSQL, Flyway, DTOs, MapStruct, CRUD paginado,
+autenticación Bearer por usuario, roles USER/ADMIN, CORS, Swagger y health check.
+
+## Arranque local completo
+
+Requisito único: Docker Desktop con Docker Compose.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-backend.ps1
+```
+
+La primera ejecución crea `.env` con contraseñas aleatorias, construye el backend,
+inicia PostgreSQL, aplica Flyway y espera el health check. También muestra la
+contraseña del administrador local. Para detener sin borrar datos:
+
+```sh
+docker compose stop
+```
+
+No uses `docker compose down -v` si quieres conservar la base.
+
+API: `http://localhost:8080`; health: `/actuator/health`.
+{% if incluir_swagger %}
+Swagger: `http://localhost:8080/swagger-ui.html`.
+{% endif %}
+
+## Autenticación desde Flutter
+
+Registro: `POST /api/auth/register`; login: `POST /api/auth/login`; usuario actual:
+`GET /api/auth/me`; logout: `POST /api/auth/logout`.
+
+```json
+{"username":"usuario","password":"una-clave-segura"}
+```
+
+Login y registro devuelven `token`, `tokenType`, `expiresAt`, `username` y `role`.
+Envía el token en todos los CRUD:
+
+```http
+Authorization: Bearer TOKEN
+```
+
+Las contraseñas se guardan con BCrypt y los tokens se almacenan únicamente como
+hash SHA-256. Los tokens expiran y logout los revoca. DELETE requiere rol ADMIN.
+Configura los orígenes de Flutter Web en `APP_CORS_ALLOWED_ORIGINS`.
+
+## CRUD paginado
+
+Cada entidad dispone de POST, GET por ID, PUT y DELETE. El listado es paginado:
+
+```text
+GET /api/clientes?page=0&size=20&sort=nombre,asc
+```
+
+El tamaño máximo es 100. Las relaciones se escriben mediante IDs, no mediante
+objetos anidados. Las colecciones inversas son de solo lectura.
+
+{% for e in entidades %}
+- **{{ e.nombre }}**: `/api/{{ e.ruta }}`; PK `{{ e.pk.nombre }}` ({{ e.pk.tipo }}).
+{% for r in e.relaciones %}
+  - `{{ r.dto_campo }}`: {% if r.owner %}escribible{% else %}solo lectura{% endif %}{% if r.required %}, obligatorio{% endif %}.
+{% endfor %}
+{% endfor %}
+
+Las PK numéricas y UUID se autogeneran; una PK String debe enviarse. PUT reemplaza
+el recurso completo. Las restricciones mínimas `1` y `1..*` se validan en el extremo
+escribible. Las composiciones generan cascada y eliminación de huérfanos cuando la
+dirección JPA lo permite. Los métodos UML siguen requiriendo implementación manual:
+el generador no puede deducir reglas de negocio a partir de un nombre de método.
+
+## Base y migraciones
+
+Flyway aplica `V1__initial_schema.sql` y Hibernate usa `ddl-auto=validate`; la API
+no modifica silenciosamente el esquema. Si cambias el modelo después de usar la base,
+crea una migración V2 en lugar de editar una migración ya aplicada.
+
+La colección Postman y el contrato offline están en `docs/`. Cambia `base_url` y
+guarda en `access_token` el token obtenido en login.
+{% endif %}

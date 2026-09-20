@@ -1,0 +1,70 @@
+package {{ paquete_base }}.seguridad;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Base64;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class TokenService {
+    public record IssuedToken(String raw, Instant expiresAt) {}
+
+    private final AuthTokenRepository repository;
+    private final SecureRandom random = new SecureRandom();
+    private final long tokenHours;
+
+    public TokenService(AuthTokenRepository repository, @Value("${app.token-hours:24}") long tokenHours) {
+        if (tokenHours < 1 || tokenHours > 720) throw new IllegalArgumentException("APP_TOKEN_HOURS debe estar entre 1 y 720.");
+        this.repository = repository;
+        this.tokenHours = tokenHours;
+    }
+
+    @Transactional
+    public IssuedToken issue(AppUser user) {
+        byte[] bytes = new byte[32];
+        random.nextBytes(bytes);
+        String raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        Instant expiresAt = Instant.now().plus(tokenHours, ChronoUnit.HOURS);
+        AuthToken token = new AuthToken();
+        token.setTokenHash(hash(raw));
+        token.setUser(user);
+        token.setExpiresAt(expiresAt);
+        repository.save(token);
+        return new IssuedToken(raw, expiresAt);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<UsernamePasswordAuthenticationToken> authenticate(String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        return repository.findByTokenHash(hash(raw))
+                .filter(token -> token.getExpiresAt().isAfter(Instant.now()))
+                .map(AuthToken::getUser)
+                .filter(AppUser::isActive)
+                .map(user -> new UsernamePasswordAuthenticationToken(user.getUsername(), null,
+                        List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))));
+    }
+
+    @Transactional
+    public void revoke(String raw) {
+        if (raw != null && !raw.isBlank()) repository.deleteByTokenHash(hash(raw));
+    }
+
+    private String hash(String raw) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 no disponible", ex);
+        }
+    }
+}

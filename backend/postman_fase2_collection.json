@@ -1,0 +1,119 @@
+{
+  "info": {
+    "name": "Fase 2 - IR y descarga protegida",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "diagrama_id",
+      "value": "1"
+    },
+    {
+      "key": "nombre_archivo",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 - Validar IR",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/generador/validar/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"diagrama_id\": \"{{diagrama_id}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "2 - Preparar ZIP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/generador/generar-backend/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"diagrama_id\": \"{{diagrama_id}}\",\n  \"incluir_swagger\": true,\n  \"incluir_docker\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Preparaci\u00f3n exitosa', () => pm.response.to.have.status(201));",
+              "if (pm.response.code === 201) {",
+              "  const data = pm.response.json();",
+              "  pm.collectionVariables.set('nombre_archivo', data.zip_url.split('/').filter(Boolean).pop());",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Descargar ZIP",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/generador/descargar/{{nombre_archivo}}/"
+      }
+    },
+    {
+      "name": "4 - Historial",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{token}}"
+          }
+        ],
+        "url": "{{base_url}}/api/generador/historial/"
+      }
+    }
+  ]
+}

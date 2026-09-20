@@ -1,0 +1,27 @@
+package {{ paquete_base }}.mappers;
+
+import {{ paquete_base }}.entidades.{{ entidad.nombre }};
+import {{ paquete_base }}.dto.{{ entidad.nombre }}DTO;
+import org.mapstruct.*;
+
+@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.ERROR)
+public interface {{ entidad.nombre }}Mapper {
+{% for rel in entidad.relaciones %}
+    @Mapping(target = "{{ rel.dto_campo }}", expression = "java({% if rel.many %}entidad.get{{ rel.getter }}().stream().map(value -> value.get{{ rel.id_getter }}()).toList(){% else %}entidad.get{{ rel.getter }}() == null ? null : entidad.get{{ rel.getter }}().get{{ rel.id_getter }}(){% endif %})")
+{% endfor %}
+    {{ entidad.nombre }}DTO toDTO({{ entidad.nombre }} entidad);
+
+{% if entidad.pk.autogenerado %}
+    @Mapping(target = "{{ entidad.pk.nombre }}", ignore = true)
+{% endif %}
+{% for rel in entidad.relaciones %}
+    @Mapping(target = "{{ rel.campo }}", ignore = true)
+{% endfor %}
+    {{ entidad.nombre }} toEntity({{ entidad.nombre }}DTO dto);
+
+    @Mapping(target = "{{ entidad.pk.nombre }}", ignore = true)
+{% for rel in entidad.relaciones %}
+    @Mapping(target = "{{ rel.campo }}", ignore = true)
+{% endfor %}
+    void update({{ entidad.nombre }}DTO dto, @MappingTarget {{ entidad.nombre }} entidad);
+}

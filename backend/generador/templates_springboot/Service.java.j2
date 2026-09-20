@@ -1,0 +1,98 @@
+package {{ paquete_base }}.servicios;
+
+import {{ paquete_base }}.entidades.{{ entidad.nombre }};
+import {{ paquete_base }}.dto.{{ entidad.nombre }}DTO;
+import {{ paquete_base }}.mappers.{{ entidad.nombre }}Mapper;
+import {{ paquete_base }}.repositorios.*;
+import {{ paquete_base }}.excepciones.ResourceNotFoundException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import java.util.List;
+import java.util.UUID;
+import java.util.Objects;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.stream.Collectors;
+
+@Service
+@Transactional
+public class {{ entidad.nombre }}Service {
+    private final {{ entidad.nombre }}Repository repository;
+    private final {{ entidad.nombre }}Mapper mapper;
+{% for rel in entidad.relaciones if rel.owner %}
+    private final {{ rel.repo_tipo }} {{ rel.repo_var }};
+{% endfor %}
+    public {{ entidad.nombre }}Service({{ entidad.nombre }}Repository repository, {{ entidad.nombre }}Mapper mapper{% for rel in entidad.relaciones if rel.owner %}, {{ rel.repo_tipo }} {{ rel.repo_var }}{% endfor %}) {
+        this.repository = repository;
+        this.mapper = mapper;
+{% for rel in entidad.relaciones if rel.owner %}
+        this.{{ rel.repo_var }} = {{ rel.repo_var }};
+{% endfor %}
+    }
+    private {{ entidad.nombre }} encontrar({{ entidad.pk.tipo }} id) {
+        return repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("{{ entidad.nombre }} no encontrado: " + id));
+    }
+    @Transactional(readOnly = true)
+    public Page<{{ entidad.nombre }}DTO> listarTodos(Pageable pageable) { return repository.findAll(pageable).map(mapper::toDTO); }
+    @Transactional(readOnly = true)
+    public {{ entidad.nombre }}DTO buscarPorId({{ entidad.pk.tipo }} id) { return mapper.toDTO(encontrar(id)); }
+    public {{ entidad.nombre }}DTO crear({{ entidad.nombre }}DTO dto) {
+{% if entidad.pk.autogenerado %}
+        if (dto.get{{ entidad.pk.getter }}() != null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La PK es autogenerada; omítela al crear.");
+{% else %}
+        if (dto.get{{ entidad.pk.getter }}() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La PK es obligatoria.");
+        if (repository.existsById(dto.get{{ entidad.pk.getter }}())) throw new ResponseStatusException(HttpStatus.CONFLICT, "La PK ya existe.");
+{% endif %}
+        var entidad = mapper.toEntity(dto);
+        asignarRelaciones(dto, entidad);
+        return mapper.toDTO(repository.saveAndFlush(entidad));
+    }
+    public {{ entidad.nombre }}DTO actualizar({{ entidad.pk.tipo }} id, {{ entidad.nombre }}DTO dto) {
+        var entidad = encontrar(id);
+        if (dto.get{{ entidad.pk.getter }}() != null && !Objects.equals(id, dto.get{{ entidad.pk.getter }}()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La PK del cuerpo no coincide con la URL.");
+        mapper.update(dto, entidad);
+        asignarRelaciones(dto, entidad);
+        return mapper.toDTO(repository.saveAndFlush(entidad));
+    }
+    public void eliminar({{ entidad.pk.tipo }} id) {
+{% if entidad.relaciones | selectattr('owner') | selectattr('many') | list %}
+        var entidad = encontrar(id);
+{% for rel in entidad.relaciones if rel.owner and rel.many %}
+        entidad.get{{ rel.getter }}().clear();
+{% endfor %}
+        repository.flush();
+{% endif %}
+        if (repository.eliminarPorId(id) == 0)
+            throw new ResourceNotFoundException("{{ entidad.nombre }} no encontrado: " + id);
+    }
+    private void asignarRelaciones({{ entidad.nombre }}DTO dto, {{ entidad.nombre }} entidad) {
+{% for rel in entidad.relaciones if rel.owner %}
+{% if rel.many %}
+        if (dto.get{{ rel.getter }}Ids() != null) {
+            if (dto.get{{ rel.getter }}Ids().stream().anyMatch(Objects::isNull))
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Los IDs de {{ rel.campo }} no pueden ser nulos.");
+            var ids = new LinkedHashSet<>(dto.get{{ rel.getter }}Ids());
+            var values = {{ rel.repo_var }}.findAllById(ids);
+            var byId = values.stream().collect(Collectors.toMap(value -> value.get{{ rel.id_getter }}(), value -> value));
+            for (var id : ids) {
+                if (!byId.containsKey(id))
+                    throw new ResourceNotFoundException("{{ rel.otra_clase }} relacionado no encontrado: " + id);
+            }
+            entidad.set{{ rel.getter }}(new ArrayList<>(ids.stream().map(byId::get).toList()));
+        }
+{% else %}
+        if (dto.get{{ rel.getter }}Id() != null) {
+            entidad.set{{ rel.getter }}({{ rel.repo_var }}.findById(dto.get{{ rel.getter }}Id())
+                .orElseThrow(() -> new ResourceNotFoundException("{{ rel.otra_clase }} relacionado no encontrado: " + dto.get{{ rel.getter }}Id())));
+        } else {
+            entidad.set{{ rel.getter }}(null);
+        }
+{% endif %}
+{% endfor %}
+    }
+}

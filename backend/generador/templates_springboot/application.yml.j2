@@ -1,0 +1,41 @@
+server:
+  port: ${SERVER_PORT:8080}
+{% if not solo_entidades %}
+app:
+  cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+  token-hours: ${APP_TOKEN_HOURS:24}
+  admin-username: ${APP_ADMIN_USERNAME:}
+  admin-password: ${APP_ADMIN_PASSWORD:}
+{% endif %}
+spring:
+  application:
+    name: {{ proyecto.nombre }}
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/{{ proyecto.nombre }}}
+    username: ${DB_USER:app}
+    password: ${DB_PASSWORD:localdev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+{% if incluir_swagger %}
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+{% endif %}

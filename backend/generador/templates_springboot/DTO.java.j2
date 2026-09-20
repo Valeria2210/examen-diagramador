@@ -1,0 +1,42 @@
+package {{ paquete_base }}.dto;
+
+import jakarta.validation.constraints.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.UUID;
+import java.util.List;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class {{ entidad.nombre }}DTO {
+{% for attr in entidad.atributos %}
+{% if not attr.nullable and not attr.pk %}
+    @NotNull
+{% endif %}
+{% if attr.longitud %}
+    @Size(max = {{ attr.longitud }})
+{% endif %}
+    private {{ attr.tipo }} {{ attr.nombre }};
+{% endfor %}
+{% for rel in entidad.relaciones %}
+{% if not rel.owner %}
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+{% endif %}
+{% if rel.owner and rel.required %}
+{% if rel.many %}
+    @NotEmpty
+{% else %}
+    @NotNull
+{% endif %}
+{% endif %}
+    private {% if rel.many %}List<{{ rel.id_tipo }}>{% else %}{{ rel.id_tipo }}{% endif %} {{ rel.dto_campo }};
+{% endfor %}
+{% for attr in entidad.atributos %}
+    public {{ attr.tipo }} get{{ attr.getter }}() { return {{ attr.nombre }}; }
+    public void set{{ attr.getter }}({{ attr.tipo }} value) { this.{{ attr.nombre }} = value; }
+{% endfor %}
+{% for rel in entidad.relaciones %}
+    public {% if rel.many %}List<{{ rel.id_tipo }}>{% else %}{{ rel.id_tipo }}{% endif %} get{{ rel.getter }}{{ 'Ids' if rel.many else 'Id' }}() { return {{ rel.dto_campo }}; }
+    public void set{{ rel.getter }}{{ 'Ids' if rel.many else 'Id' }}({% if rel.many %}List<{{ rel.id_tipo }}>{% else %}{{ rel.id_tipo }}{% endif %} value) { this.{{ rel.dto_campo }} = value; }
+{% endfor %}
+}

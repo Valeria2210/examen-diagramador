@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:17
+    container_name: uml_diagramador_db
+    restart: always
+    environment:
+      POSTGRES_DB: diagrama
+      POSTGRES_USER: valeria
+      POSTGRES_PASSWORD: 123456789
+    ports:
+      - "5432:5432"
+    volumes:
+      - uml_pgdata:/var/lib/postgresql/data
+
+volumes:
+  uml_pgdata:

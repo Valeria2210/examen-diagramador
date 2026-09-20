@@ -1,0 +1,68 @@
+package {{ paquete_base }}.seguridad;
+
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.Locale;
+
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+    private final AppUserRepository users;
+    private final PasswordEncoder passwords;
+    private final TokenService tokens;
+
+    public AuthController(AppUserRepository users, PasswordEncoder passwords, TokenService tokens) {
+        this.users = users;
+        this.passwords = passwords;
+        this.tokens = tokens;
+    }
+
+    @PostMapping("/register")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
+    public AuthModels.TokenResponse register(@Valid @RequestBody AuthModels.RegisterRequest request) {
+        String username = request.username().trim().toLowerCase(Locale.ROOT);
+        if (users.existsByUsernameIgnoreCase(username))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El usuario ya existe.");
+        AppUser user = new AppUser();
+        user.setUsername(username);
+        user.setPasswordHash(passwords.encode(request.password()));
+        user.setRole(UserRole.USER);
+        users.saveAndFlush(user);
+        return response(user, tokens.issue(user));
+    }
+
+    @PostMapping("/login")
+    @Transactional
+    public AuthModels.TokenResponse login(@Valid @RequestBody AuthModels.LoginRequest request) {
+        AppUser user = users.findByUsernameIgnoreCase(request.username().trim())
+                .filter(AppUser::isActive)
+                .filter(found -> passwords.matches(request.password(), found.getPasswordHash()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas."));
+        return response(user, tokens.issue(user));
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        if (authorization != null && authorization.startsWith("Bearer ")) tokens.revoke(authorization.substring(7).trim());
+    }
+
+    @GetMapping("/me")
+    @Transactional(readOnly = true)
+    public AuthModels.UserResponse me(@AuthenticationPrincipal UserDetails principal) {
+        AppUser user = users.findByUsernameIgnoreCase(principal.getUsername())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Usuario no disponible."));
+        return new AuthModels.UserResponse(user.getUsername(), user.getRole());
+    }
+
+    private AuthModels.TokenResponse response(AppUser user, TokenService.IssuedToken issued) {
+        return new AuthModels.TokenResponse(issued.raw(), "Bearer", issued.expiresAt(), user.getUsername(), user.getRole());
+    }
+}
