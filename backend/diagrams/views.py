@@ -153,52 +153,110 @@ UML_DIAGRAM_TOOL = {
 @api_view(["POST"])
 @throttle_classes([AIThrottle])
 def interpret_uml(request):
-    """Interpreta texto o una transcripción usando Claude tool use, sin exponer la API key."""
+    """Interpreta texto o una transcripci?n usando Google Gemini con Structured Outputs, sin exponer la API key."""
     description = serializers.CharField(max_length=20000).run_validation(request.data.get("description"))
     if not description:
-        return Response({"detail": "La descripción del diagrama está vacía."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "La descripci?n del diagrama est? vac?a."}, status=status.HTTP_400_BAD_REQUEST)
 
-    api_key = config("ANTHROPIC_API_KEY", default="")
+    api_key = config("GEMINI_API_KEY", default="") or config("ANTHROPIC_API_KEY", default="")
     if not api_key:
-        return Response({"detail": "Falta ANTHROPIC_API_KEY en backend/.env."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response({"detail": "Falta GEMINI_API_KEY en backend/.env."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-    payload = {
-        "model": config("ANTHROPIC_MODEL", default="claude-sonnet-4-6"),
-        "max_tokens": 3000,
-        "system": "Diseña modelos conceptuales UML 2.5+. Usa solo conceptos del negocio, sin clases técnicas. Usa la herramienta create_uml_diagram y devuelve siempre todas las clases, atributos, métodos y relaciones deducibles.",
-        "tools": [UML_DIAGRAM_TOOL],
-        "tool_choice": {"type": "tool", "name": "create_uml_diagram"},
-        "messages": [{"role": "user", "content": description}],
-    }
-    api_request = urllib_request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
+    model_name = config("GEMINI_MODEL", default="gemini-3.5-flash-lite")
+
+    gemini_schema = {
+        "type": "OBJECT",
+        "properties": {
+            "classes": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "name": {"type": "STRING"},
+                        "kind": {"type": "STRING", "enum": ["CLASS", "ABSTRACT", "INTERFACE", "ENUM"]},
+                        "attributes": {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "name": {"type": "STRING"},
+                                    "type": {"type": "STRING"},
+                                    "visibility": {"type": "STRING", "enum": ["PUBLIC", "PRIVATE", "PROTECTED", "PACKAGE"]},
+                                },
+                                "required": ["name", "type", "visibility"],
+                            },
+                        },
+                        "methods": {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "name": {"type": "STRING"},
+                                    "returnType": {"type": "STRING"},
+                                    "visibility": {"type": "STRING", "enum": ["PUBLIC", "PRIVATE", "PROTECTED", "PACKAGE"]},
+                                    "parameters": {"type": "ARRAY", "items": {"type": "STRING"}},
+                                },
+                                "required": ["name", "returnType", "visibility", "parameters"],
+                            },
+                        },
+                    },
+                    "required": ["name", "kind", "attributes", "methods"],
+                },
+            },
+            "relations": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "from": {"type": "STRING"},
+                        "to": {"type": "STRING"},
+                        "type": {"type": "STRING", "enum": ["ASSOCIATION", "AGGREGATION", "COMPOSITION", "INHERITANCE", "REALIZATION", "DEPENDENCY"]},
+                        "sourceMultiplicity": {"type": "STRING"},
+                        "targetMultiplicity": {"type": "STRING"},
+                        "label": {"type": "STRING"},
+                    },
+                    "required": ["from", "to", "type", "sourceMultiplicity", "targetMultiplicity", "label"],
+                },
+            },
         },
-        method="POST",
-    )
-    try:
-        with urllib_request.urlopen(api_request, timeout=90) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except urllib_error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")[:500]
-        if "credit balance is too low" in details.lower():
-            return Response(
-                {"detail": "Claude no tiene créditos disponibles. Agrega saldo en Anthropic Plans & Billing para generar diagramas desde texto o voz."},
-                status=status.HTTP_402_PAYMENT_REQUIRED,
-            )
-        return Response({"detail": f"Claude rechazó la solicitud ({exc.code}). {details}"}, status=status.HTTP_502_BAD_GATEWAY)
-    except (urllib_error.URLError, TimeoutError, ValueError) as exc:
-        return Response({"detail": f"No se pudo conectar con Claude: {exc}"}, status=status.HTTP_502_BAD_GATEWAY)
+        "required": ["classes", "relations"],
+    }
 
-    content = result.get("content", []) if isinstance(result, dict) else []
-    tool_use = next((item for item in content if isinstance(item, dict) and item.get("type") == "tool_use" and item.get("name") == "create_uml_diagram"), None)
-    if not tool_use or not isinstance(tool_use.get("input"), dict):
-        return Response({"detail": "Claude no devolvió un diagrama estructurado."}, status=status.HTTP_502_BAD_GATEWAY)
-    return Response(tool_use["input"])
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=api_key)
+        gen_config = types.GenerateContentConfig(
+            system_instruction="Dise?a modelos conceptuales UML 2.5+. Usa solo conceptos del negocio, sin clases t?cnicas. Devuelve siempre todas las clases, atributos, m?todos y relaciones deducibles.",
+            response_mime_type="application/json",
+            response_schema=gemini_schema,
+            temperature=0.2,
+        )
+        response = client.models.generate_content(
+            model=model_name,
+            contents=description,
+            config=gen_config,
+        )
+        raw_text = response.text or "{}"
+        result = json.loads(raw_text)
+    except Exception as exc:
+        error_msg = str(exc)
+        if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+            return Response(
+                {"detail": "Gemini excedi? la cuota de peticiones. Espera un momento y vuelve a intentar."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if "API_KEY_INVALID" in error_msg or "403" in error_msg:
+            return Response(
+                {"detail": "La clave GEMINI_API_KEY no es v?lida o no tiene permisos."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response({"detail": f"Error conectando con Gemini: {error_msg}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+    if not isinstance(result, dict) or "classes" not in result or "relations" not in result:
+        return Response({"detail": "Gemini no devolvi? un diagrama estructurado v?lido."}, status=status.HTTP_502_BAD_GATEWAY)
+    return Response(result)
 
 
 @api_view(["POST"])

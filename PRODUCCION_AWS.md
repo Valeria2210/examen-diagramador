@@ -60,7 +60,7 @@ Caddy obtiene el certificado cuando el dominio resuelve correctamente y 80/443 e
 - Abrir `/admin/` y confirmar que `/static/admin/css/base.css` carga.
 - Confirmar que los volúmenes persisten después de reiniciar y que los registros no contienen secretos.
 
-OCR incluye Tesseract español e inglés en la imagen. Voz e interpretación con IA requieren ANTHROPIC_API_KEY y un ANTHROPIC_MODEL disponible en la cuenta; comprobar esa integración por separado antes de ofrecerla. Cámara, voz del navegador y Enterprise Architect necesitan validación manual.
+OCR incluye Tesseract español e inglés en la imagen. Voz e interpretación con IA requieren GEMINI_API_KEY y GEMINI_MODEL (por defecto gemini-3.5-flash-lite) configurados en .env.production. Cámara, voz del navegador y Enterprise Architect necesitan validación manual.
 
 ## Operación y recuperación
 
