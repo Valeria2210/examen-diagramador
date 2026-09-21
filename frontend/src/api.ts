@@ -36,6 +36,26 @@ export async function prepareBackend(diagrama_id: number, incluir_swagger: boole
   return data;
 }
 
+export type FlutterGeneration = {
+  sha256: string; tamano_bytes: number; expira_en: string;
+  mensaje: string; estado: "FLUTTER_GENERADO"; compilacion: string;
+  generacion_id: string; backend_generacion_id: string; zip_url: string;
+  entidades_generadas: string[];
+  metricas: { producto: "flutter"; entidades: number; archivos_flutter: number;
+    ia_local: boolean; backend_generacion_id: string; ir_validado: boolean;
+    compilacion: string; duracion_total_ms: number };
+};
+
+export async function prepareFlutter(diagrama_id: number, api_base_url: string, incluir_ia_local = true): Promise<FlutterGeneration> {
+  const { data } = await http.post<FlutterGeneration>("/generador/generar-flutter/",
+    { diagrama_id, api_base_url, incluir_ia_local }, { timeout: 120000 });
+  return data;
+}
+
+export async function downloadFlutter(generation: FlutterGeneration): Promise<void> {
+  return downloadBackend(generation as unknown as BackendGeneration);
+}
+
 export async function downloadBackend(generation: BackendGeneration): Promise<void> {
   // Use our API origin and Token interceptor rather than navigating to an unauthenticated URL.
   const segments = new URL(generation.zip_url).pathname.split("/").filter(Boolean);
@@ -62,9 +82,55 @@ export async function downloadBackend(generation: BackendGeneration): Promise<vo
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export type AuthUser = { id: number; username: string; email: string };
+export type AuthUser = {
+  id: number;
+  username: string;
+  email: string;
+  is_staff?: boolean;
+  is_superuser?: boolean;
+};
 export type AuthResponse = { token: string; user: AuthUser };
 export const AUTH_EXPIRED_EVENT = "uml-auth-expired";
+
+export type AdminUserData = {
+  id: number;
+  username: string;
+  email: string;
+  is_staff: boolean;
+  is_superuser: boolean;
+  date_joined: string | null;
+  projects_count: number;
+};
+
+export type AdminStatsData = {
+  stats: {
+    total_users: number;
+    total_projects: number;
+    total_diagrams: number;
+    total_classes: number;
+    gemini_model: string;
+  };
+  users: AdminUserData[];
+};
+
+export async function fetchAdminStats(): Promise<AdminStatsData> {
+  const { data } = await http.get<AdminStatsData>("/admin/stats/");
+  return data;
+}
+
+export async function createAdminUser(payload: {
+  username: string;
+  email?: string;
+  password: string;
+  is_staff?: boolean;
+}): Promise<AdminUserData> {
+  const { data } = await http.post<AdminUserData>("/admin/users/", payload);
+  return data;
+}
+
+export async function deleteAdminUser(userId: number): Promise<void> {
+  await http.delete(`/admin/users/${userId}/`);
+}
 
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem("uml-auth-token");

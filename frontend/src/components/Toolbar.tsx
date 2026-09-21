@@ -29,6 +29,7 @@ interface ToolbarProps {
   onToggleAssistant: () => void;
   user: AuthUser | null;
   onLogout: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export function Toolbar({
@@ -55,6 +56,7 @@ export function Toolbar({
   onToggleAssistant,
   user,
   onLogout,
+  onOpenAdmin,
 }: ToolbarProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const xmiInputRef = useRef<HTMLInputElement>(null);
@@ -222,7 +224,12 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-account">
-        <span className="toolbar-user">{user?.username ?? "Cuenta"}</span>
+        {user?.is_staff && onOpenAdmin && (
+          <button className="toolbar-btn toolbar-btn-admin" onClick={onOpenAdmin} title="Abrir Panel de Administraci?n">
+            ?? Admin
+          </button>
+        )}
+        <span className="toolbar-user" title={user?.email || user?.username}>{user?.username ?? "Cuenta"}</span>
         <button className="toolbar-btn toolbar-btn-quiet" onClick={onLogout}>Salir</button>
       </div>
 

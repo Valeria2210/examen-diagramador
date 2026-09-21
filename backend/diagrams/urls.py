@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ProjectViewSet, DiagramViewSet, UMLClassViewSet,
     AttributeViewSet, MethodViewSet, RelationViewSet, import_xmi,
-    register, login, logout, current_user, interpret_uml, accept_share,
+    register, login, logout, current_user, interpret_uml, accept_share, admin_stats, admin_create_user, admin_delete_user,
 )
 
 router = DefaultRouter()
@@ -22,5 +22,8 @@ urlpatterns = [
     path("ai/interpret-uml/", interpret_uml, name="interpret-uml"),
     path("ai/import-xmi/", import_xmi, name="import-xmi"),
     path("shares/<uuid:token>/accept/", accept_share, name="accept-share"),
+    path("admin/stats/", admin_stats, name="admin-stats"),
+    path("admin/users/", admin_create_user, name="admin-create-user"),
+    path("admin/users/<int:user_id>/", admin_delete_user, name="admin-delete-user"),
     *router.urls,
 ]

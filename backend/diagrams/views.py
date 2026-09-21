@@ -31,7 +31,7 @@ from .throttles import AuthThrottle, AIThrottle
 
 
 def user_payload(user):
-    return {"id": user.id, "username": user.username, "email": user.email}
+    return {"id": user.id, "username": user.username, "email": user.email, "is_staff": user.is_staff, "is_superuser": user.is_superuser}
 
 
 @api_view(["POST"])
@@ -80,6 +80,77 @@ def logout(request):
 @api_view(["GET"])
 def current_user(request):
     return Response(user_payload(request.user))
+
+
+
+
+@api_view(["GET"])
+def admin_stats(request):
+    if not request.user.is_staff:
+        return Response({"detail": "Permiso denegado. Solo administradores."}, status=status.HTTP_403_FORBIDDEN)
+    
+    users_qs = User.objects.all().order_by("-date_joined")
+    users_list = [{
+        "id": u.id,
+        "username": u.username,
+        "email": u.email,
+        "is_staff": u.is_staff,
+        "is_superuser": u.is_superuser,
+        "date_joined": u.date_joined.isoformat() if u.date_joined else None,
+        "projects_count": u.projects.count(),
+    } for u in users_qs]
+
+    return Response({
+        "stats": {
+            "total_users": User.objects.count(),
+            "total_projects": Project.objects.count(),
+            "total_diagrams": Diagram.objects.count(),
+            "total_classes": UMLClass.objects.count(),
+            "gemini_model": config("GEMINI_MODEL", default="gemini-3.5-flash-lite"),
+        },
+        "users": users_list,
+    })
+
+
+@api_view(["POST"])
+def admin_create_user(request):
+    if not request.user.is_staff:
+        return Response({"detail": "Permiso denegado. Solo administradores."}, status=status.HTTP_403_FORBIDDEN)
+    
+    username = serializers.CharField(max_length=150).run_validation(request.data.get("username"))
+    email = serializers.EmailField(allow_blank=True).run_validation(request.data.get("email", ""))
+    password = serializers.CharField(trim_whitespace=False).run_validation(request.data.get("password"))
+    is_staff = bool(request.data.get("is_staff", False))
+
+    if User.objects.filter(username__iexact=username).exists():
+        return Response({"detail": "Ese nombre de usuario ya existe."}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = User.objects.create_user(username=username, email=email, password=password, is_staff=is_staff)
+    Token.objects.create(user=user)
+    return Response({
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "is_staff": user.is_staff,
+        "is_superuser": user.is_superuser,
+        "date_joined": user.date_joined.isoformat() if user.date_joined else None,
+        "projects_count": 0,
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+def admin_delete_user(request, user_id):
+    if not request.user.is_staff:
+        return Response({"detail": "Permiso denegado. Solo administradores."}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.id == user_id:
+        return Response({"detail": "No puedes eliminar tu propia cuenta de administrador."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user_to_delete = User.objects.get(pk=user_id)
+        user_to_delete.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except User.DoesNotExist:
+        return Response({"detail": "Usuario no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
 
 UML_DIAGRAM_TOOL = {

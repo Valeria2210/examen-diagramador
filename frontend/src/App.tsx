@@ -163,6 +163,7 @@ function DiagramEditor({ authUser, onLogout }: { authUser: api.AuthUser | null; 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -662,6 +663,7 @@ function DiagramEditor({ authUser, onLogout }: { authUser: api.AuthUser | null; 
         onToggleAssistant={() => setAssistantOpen((value) => !value)}
         user={authUser}
         onLogout={onLogout}
+        onOpenAdmin={() => setAdminOpen(true)}
       />
 
       {shareOpen && canShare && currentDiagram && (

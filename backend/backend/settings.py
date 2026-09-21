@@ -4,7 +4,7 @@ from decouple import config, Csv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config("SECRET_KEY", default="dev-secret-key-change-me")
-DEBUG = config("DEBUG", default=True, cast=bool)
+DEBUG = str(config("DEBUG", default="True")).lower() in ("true", "1", "yes", "on")
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv())
 
 INSTALLED_APPS = [
