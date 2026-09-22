@@ -1,0 +1,25 @@
+name: {{ proyecto.nombre|lower }}_mobile
+description: Frontend Flutter generado para {{ proyecto.nombre }}.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.6.0
+  flutter_secure_storage: ^11.2.0
+{% if incluir_ia_local %}
+  flutter_gemma: ^1.8.3
+  flutter_gemma_mediapipe: ^1.0.5
+{% endif %}
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

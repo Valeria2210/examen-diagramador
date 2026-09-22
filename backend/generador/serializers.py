@@ -9,3 +9,9 @@ class GenerarBackendRequestSerializer(serializers.Serializer):
     autocorregir = serializers.BooleanField(default=False)
 
     alcance = serializers.ChoiceField(choices=["entidades", "completo"], default="completo")
+
+
+class GenerarFlutterRequestSerializer(serializers.Serializer):
+    diagrama_id = serializers.IntegerField(min_value=1)
+    api_base_url = serializers.URLField(default="http://10.0.2.2:8080", max_length=300)
+    incluir_ia_local = serializers.BooleanField(default=True)

@@ -1,0 +1,73 @@
+{% if incluir_ia_local %}
+import 'package:flutter/material.dart';
+import 'package:flutter_gemma/flutter_gemma.dart';
+
+class LocalAiScreen extends StatefulWidget {
+  const LocalAiScreen({super.key});
+  @override State<LocalAiScreen> createState() => _LocalAiScreenState();
+}
+
+class _LocalAiScreenState extends State<LocalAiScreen> {
+  final modelUrl = TextEditingController();
+  final hfToken = TextEditingController();
+  final prompt = TextEditingController();
+  String output = 'Instala un modelo MediaPipe .task compatible antes de conversar.';
+  bool busy = false;
+  int progress = 0;
+
+  Future<void> _install() async {
+    if (modelUrl.text.trim().isEmpty) return;
+    setState(() { busy = true; output = 'Descargando el modelo…'; });
+    try {
+      await FlutterGemma.installModel(modelType: ModelType.gemmaIt, fileType: ModelFileType.task)
+        .fromNetwork(modelUrl.text.trim(), token: hfToken.text.trim().isEmpty ? null : hfToken.text.trim(), foreground: true)
+        .withProgress((value) { if (mounted) setState(() => progress = value); })
+        .install();
+      if (mounted) setState(() => output = 'Modelo instalado. Ya puedes usar la IA sin enviar el texto a la nube.');
+    } catch (e) { if (mounted) setState(() => output = 'No se pudo instalar: $e'); }
+    finally { if (mounted) setState(() => busy = false); }
+  }
+
+  Future<void> _ask() async {
+    if (prompt.text.trim().isEmpty) return;
+    setState(() { busy = true; output = ''; });
+    dynamic model;
+    try {
+      model = await FlutterGemma.getActiveModel(maxTokens: 2048, preferredBackend: PreferredBackend.gpu);
+      final chat = await model.createChat(maxOutputTokens: 256,
+        systemInstruction: 'Eres un asistente móvil privado para {{ proyecto.nombre }}. Responde en español, de forma breve y no inventes datos del backend.');
+      await chat.addQueryChunk(Message.text(text: prompt.text.trim(), isUser: true));
+      final answer = await chat.generateChatResponse();
+      if (mounted) setState(() => output = answer.toString());
+    } catch (e) { if (mounted) setState(() => output = 'IA local no disponible: $e'); }
+    finally { await model?.close(); if (mounted) setState(() => busy = false); }
+  }
+
+  @override Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('IA local')),
+    body: ListView(padding: const EdgeInsets.all(16), children: [
+      const Text('El modelo se descarga una vez. Las conversaciones posteriores se procesan en el teléfono.'),
+      const SizedBox(height: 12),
+      TextField(controller: modelUrl, decoration: const InputDecoration(labelText: 'URL del modelo .task', border: OutlineInputBorder())),
+      const SizedBox(height: 12),
+      TextField(controller: hfToken, obscureText: true, decoration: const InputDecoration(labelText: 'Token Hugging Face (si el modelo lo exige)', border: OutlineInputBorder())),
+      const SizedBox(height: 8),
+      LinearProgressIndicator(value: progress == 0 ? null : progress / 100),
+      FilledButton.tonal(onPressed: busy ? null : _install, child: const Text('Instalar modelo en el teléfono')),
+      const Divider(height: 32),
+      TextField(controller: prompt, minLines: 2, maxLines: 6, decoration: const InputDecoration(labelText: 'Pregunta', border: OutlineInputBorder())),
+      FilledButton(onPressed: busy ? null : _ask, child: Text(busy ? 'Procesando…' : 'Preguntar localmente')),
+      const SizedBox(height: 16), SelectableText(output),
+      const SizedBox(height: 24),
+      const Text('Los pesos del modelo conservan su propia licencia. Revisa sus términos antes de distribuirlos.'),
+    ]),
+  );
+  @override void dispose() { modelUrl.dispose(); hfToken.dispose(); prompt.dispose(); super.dispose(); }
+}
+{% else %}
+import 'package:flutter/material.dart';
+class LocalAiScreen extends StatelessWidget {
+  const LocalAiScreen({super.key});
+  @override Widget build(BuildContext context) => const Scaffold(body: Center(child: Text('IA local no incluida.')));
+}
+{% endif %}

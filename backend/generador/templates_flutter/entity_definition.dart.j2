@@ -1,0 +1,32 @@
+class FieldDefinition {
+  const FieldDefinition(this.name, this.type, {this.required = false, this.readOnly = false, this.many = false});
+  final String name;
+  final String type;
+  final bool required;
+  final bool readOnly;
+  final bool many;
+}
+
+class EntityDefinition {
+  const EntityDefinition({required this.name, required this.route, required this.idField, required this.fields});
+  final String name;
+  final String route;
+  final String idField;
+  final List<FieldDefinition> fields;
+}
+
+const entities = <EntityDefinition>[
+{% for e in entidades %}
+  EntityDefinition(
+    name: '{{ e.nombre }}', route: '/api/{{ e.ruta }}', idField: '{{ e.pk.nombre }}',
+    fields: [
+{% for a in e.atributos %}
+      FieldDefinition('{{ a.nombre }}', '{{ a.tipo }}', required: {{ (not a.nullable)|lower }}, readOnly: {{ (a.pk and a.autogenerado)|lower }}),
+{% endfor %}
+{% for r in e.relaciones if r.owner %}
+      FieldDefinition('{{ r.dto_campo }}', '{{ r.id_tipo }}', required: {{ r.required|lower }}, many: {{ r.many|lower }}),
+{% endfor %}
+    ],
+  ),
+{% endfor %}
+];

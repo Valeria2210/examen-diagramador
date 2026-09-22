@@ -1,0 +1,34 @@
+import 'package:flutter/material.dart';
+import '../models/entity_definition.dart';
+import '../services/api_client.dart';
+import 'entity_screen.dart';
+import 'local_ai_screen.dart';
+import 'login_screen.dart';
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+  @override Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('{{ proyecto.nombre }}'), actions: [
+      IconButton(tooltip: 'Salir', icon: const Icon(Icons.logout), onPressed: () async {
+        await apiClient.logout();
+        if (context.mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+      }),
+    ]),
+    body: ListView(padding: const EdgeInsets.all(16), children: [
+      Text('Entidades', style: Theme.of(context).textTheme.titleLarge),
+      ...entities.map((entity) => Card(child: ListTile(
+        leading: const Icon(Icons.storage), title: Text(entity.name), subtitle: Text(entity.route),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EntityScreen(entity: entity))),
+      ))),
+{% if incluir_ia_local %}
+      const SizedBox(height: 16),
+      Card(child: ListTile(
+        leading: const Icon(Icons.auto_awesome), title: const Text('Asistente local'),
+        subtitle: const Text('El texto se procesa en este teléfono'), trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalAiScreen())),
+      )),
+{% endif %}
+    ]),
+  );
+}

@@ -1,0 +1,7 @@
+class AppConfig {
+  static const apiBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: '{{ api_base_url }}',
+  );
+  static const backendGenerationId = '{{ backend_generacion_id }}';
+}

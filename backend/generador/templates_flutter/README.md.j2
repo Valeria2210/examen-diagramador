@@ -1,0 +1,44 @@
+# {{ proyecto.nombre }} Mobile
+
+Frontend Flutter generado desde el mismo IR del backend `{{ backend_generacion_id }}`.
+Incluye autenticación Bearer, almacenamiento seguro del token y CRUD genérico para
+{% for e in entidades %}`{{ e.nombre }}`{% if not loop.last %}, {% endif %}{% endfor %}.
+
+## Preparación
+
+Requiere Flutter estable con Dart 3.12+, Android Studio/SDK y un dispositivo o
+emulador. En PowerShell:
+
+```powershell
+Copy-Item .\config.json.example .\config.json
+powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
+flutter run --dart-define-from-file=config.json
+```
+
+`API_BASE_URL` usa inicialmente `{{ api_base_url }}`. Para Android Emulator usa
+`http://10.0.2.2:8080`; para un teléfono físico usa la IP LAN del equipo que ejecuta
+el backend, por ejemplo `http://192.168.1.20:8080`. En producción usa HTTPS.
+
+{% if incluir_ia_local %}
+## IA local en el teléfono
+
+La pantalla **Asistente local** utiliza `flutter_gemma` y MediaPipe. Debes indicar
+una URL de un modelo compatible `.task`; la app lo instala una vez y posteriormente
+la inferencia ocurre en el dispositivo. El modelo no se incluye en este ZIP por su
+tamaño y porque sus pesos tienen términos de licencia propios. Algunos modelos
+requieren un token de Hugging Face y aceptación previa de licencia.
+
+Para probar en emulador, MediaPipe admite inferencia de texto en x86_64; el rendimiento
+real debe validarse también en un teléfono. Nunca incluyas tokens privados dentro del
+código ni en Git.
+{% endif %}
+
+## Contrato esperado
+
+- Login: `POST /api/auth/login`.
+- Cabecera: `Authorization: Bearer TOKEN`.
+- Listados: objeto paginado con la lista en `content`.
+- Borrado: requiere un usuario con rol `ADMIN`.
+
+El generador crea pantallas CRUD técnicas. Las reglas de negocio y una experiencia
+visual especializada para cada proceso deben añadirse según los requisitos reales.

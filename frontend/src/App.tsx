@@ -27,6 +27,8 @@ import { AuthPage } from "./components/AuthPage";
 import { ShareProjectDialog } from "./components/ShareProjectDialog";
 import { VersionHistoryDialog } from "./components/VersionHistoryDialog";
 import { BackendDiagramDialog } from "./components/BackendDiagramDialog";
+import { FlutterDiagramDialog } from "./components/FlutterDiagramDialog";
+import { AdminPanelModal } from "./components/AdminPanelModal";
 import { canEditDiagram, canShareProject } from "./permissions";
 import { exportDiagram } from "./exportDiagram";
 import { normalizeMethodParameters } from "./importParameters";
@@ -170,6 +172,7 @@ function DiagramEditor({ authUser, onLogout }: { authUser: api.AuthUser | null; 
   const [controlsCollapsed, setControlsCollapsed] = useState(false);
   const [exportingImage, setExportingImage] = useState(false);
   const [backendOpen, setBackendOpen] = useState(false);
+  const [flutterOpen, setFlutterOpen] = useState(false);
   const refreshRequestId = useRef(0);
   const pendingConnectionSource = useRef<string | null>(null);
   const pendingSaves = useRef(0);
@@ -648,6 +651,11 @@ function DiagramEditor({ authUser, onLogout }: { authUser: api.AuthUser | null; 
           if (pendingSaves.current > 0) { setError("Espera a que termine el guardado antes de generar el backend."); return; }
           setBackendOpen(true);
         }}
+        onFlutter={() => {
+          if (currentDiagramId === null || loading) return;
+          if (pendingSaves.current > 0) { setError("Espera a que termine el guardado antes de generar Flutter."); return; }
+          setFlutterOpen(true);
+        }}
         readOnly={readOnly || loading || saving}
         canShare={canShare}
         loading={loading}
@@ -677,6 +685,14 @@ function DiagramEditor({ authUser, onLogout }: { authUser: api.AuthUser | null; 
       )}
 
       {backendOpen && <BackendDiagramDialog key={currentDiagramId} initialDiagramId={currentDiagramId} autoGenerate onClose={() => setBackendOpen(false)} />}
+      {flutterOpen && currentDiagramId !== null && <FlutterDiagramDialog key={currentDiagramId} diagramId={currentDiagramId} onClose={() => setFlutterOpen(false)} />}
+      {adminOpen && authUser?.is_staff && (
+        <AdminPanelModal
+          isOpen={adminOpen}
+          onClose={() => setAdminOpen(false)}
+          currentUser={authUser}
+        />
+      )}
 
       {historyOpen && currentDiagramId !== null && (
         <VersionHistoryDialog

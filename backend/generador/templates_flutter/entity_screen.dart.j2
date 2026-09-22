@@ -1,0 +1,190 @@
+import 'package:flutter/material.dart';
+import '../models/entity_definition.dart';
+import '../services/api_client.dart';
+
+class EntityScreen extends StatefulWidget {
+  const EntityScreen({super.key, required this.entity});
+  final EntityDefinition entity;
+  @override State<EntityScreen> createState() => _EntityScreenState();
+}
+
+class _EntityScreenState extends State<EntityScreen> {
+  List<Map<String, dynamic>> items = [];
+  bool loading = true;
+  String? error;
+  String query = '';
+  final searchController = TextEditingController();
+
+  @override void initState() { super.initState(); _load(); }
+  @override void dispose() { searchController.dispose(); super.dispose(); }
+
+  Future<void> _load() async {
+    setState(() { loading = true; error = null; });
+    try { items = await apiClient.list(widget.entity.route); }
+    catch (e) { error = e.toString(); }
+    if (mounted) setState(() => loading = false);
+  }
+  Future<void> _edit([Map<String, dynamic>? current]) async {
+    final changed = await showDialog<bool>(context: context, builder: (_) => EntityForm(entity: widget.entity, current: current));
+    if (changed == true) await _load();
+  }
+  Future<void> _delete(Map<String, dynamic> item) async {
+    final accepted = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
+      title: const Text('Eliminar registro'), content: const Text('Esta operación requiere rol ADMIN.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Eliminar'))],
+    ));
+    if (accepted != true) return;
+    try { await apiClient.delete(widget.entity.route, item[widget.entity.idField]); await _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
+
+  List<Map<String, dynamic>> get _filteredItems {
+    if (query.trim().isEmpty) return items;
+    final term = query.trim().toLowerCase();
+    return items.where((item) => item.values.any((val) => val.toString().toLowerCase().contains(term))).toList();
+  }
+
+  @override Widget build(BuildContext context) {
+    final filtered = _filteredItems;
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.entity.name), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+      floatingActionButton: FloatingActionButton(onPressed: () => _edit(), child: const Icon(Icons.add)),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: TextField(
+            controller: searchController,
+            decoration: InputDecoration(
+              hintText: 'Buscar en ${widget.entity.name}…',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: query.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () {
+                searchController.clear();
+                setState(() => query = '');
+              }) : null,
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: (val) => setState(() => query = val),
+          ),
+        ),
+        Expanded(
+          child: loading ? const Center(child: CircularProgressIndicator()) : error != null
+            ? Center(child: Text(error!))
+            : filtered.isEmpty ? const Center(child: Text('Sin registros'))
+            : ListView.builder(itemCount: filtered.length, itemBuilder: (_, index) {
+                final item = filtered[index];
+                return Card(margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: ListTile(
+                  title: Text('${widget.entity.idField}: ${item[widget.entity.idField]}'),
+                  subtitle: Text(item.entries.where((entry) => entry.key != widget.entity.idField)
+                    .take(3).map((entry) => '${entry.key}: ${entry.value}').join('\n')),
+                  onTap: () => _edit(item),
+                  trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(item)),
+                ));
+              }),
+        ),
+      ]),
+    );
+  }
+}
+
+class EntityForm extends StatefulWidget {
+  const EntityForm({super.key, required this.entity, this.current});
+  final EntityDefinition entity;
+  final Map<String, dynamic>? current;
+  @override State<EntityForm> createState() => _EntityFormState();
+}
+
+class _EntityFormState extends State<EntityForm> {
+  late final Map<String, TextEditingController> controllers;
+  late final Map<String, bool> boolValues;
+  bool busy = false;
+  String? error;
+
+  @override void initState() {
+    super.initState();
+    controllers = {};
+    boolValues = {};
+    for (final field in widget.entity.fields) {
+      if (field.readOnly) continue;
+      final rawVal = widget.current?[field.name];
+      if (field.type == 'Boolean') {
+        boolValues[field.name] = rawVal == true || rawVal.toString().toLowerCase() == 'true';
+      } else {
+        controllers[field.name] = TextEditingController(text: _initial(field, rawVal));
+      }
+    }
+  }
+
+  String _initial(FieldDefinition field, dynamic value) => value == null ? '' : field.many && value is List ? value.join(', ') : value.toString();
+
+  dynamic _parse(FieldDefinition field, String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return field.many ? <dynamic>[] : null;
+    dynamic one(String value) => switch (field.type) {
+      'Integer' || 'Long' => int.parse(value.trim()),
+      'BigDecimal' || 'Double' || 'Float' => double.parse(value.trim()),
+      _ => value.trim(),
+    };
+    return field.many ? text.split(',').where((value) => value.trim().isNotEmpty).map(one).toList() : one(text);
+  }
+
+  Future<void> _save() async {
+    setState(() { busy = true; error = null; });
+    try {
+      final body = <String, dynamic>{};
+      for (final field in widget.entity.fields) {
+        if (field.readOnly) continue;
+        if (field.type == 'Boolean') {
+          body[field.name] = boolValues[field.name] ?? false;
+        } else {
+          final value = _parse(field, controllers[field.name]!.text);
+          if (field.required && (value == null || value is List && value.isEmpty)) throw FormatException('${field.name} es obligatorio');
+          body[field.name] = value;
+        }
+      }
+      if (widget.current == null) { await apiClient.create(widget.entity.route, body); }
+      else { await apiClient.update(widget.entity.route, widget.current![widget.entity.idField]!, body); }
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) { if (mounted) setState(() => error = e.toString()); }
+    finally { if (mounted) setState(() => busy = false); }
+  }
+
+  TextInputType _keyboardType(String type) => switch (type) {
+    'Integer' || 'Long' => TextInputType.number,
+    'BigDecimal' || 'Double' || 'Float' => const TextInputType.numberWithOptions(decimal: true),
+    _ => TextInputType.text,
+  };
+
+  @override Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.current == null ? 'Crear ${widget.entity.name}' : 'Editar ${widget.entity.name}'),
+    content: SizedBox(width: 480, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ...widget.entity.fields.where((field) => !field.readOnly).map((field) {
+        if (field.type == 'Boolean') {
+          return SwitchListTile(
+            title: Text('${field.name}${field.required ? ' *' : ''}'),
+            value: boolValues[field.name] ?? false,
+            onChanged: (val) => setState(() => boolValues[field.name] = val),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextField(
+            controller: controllers[field.name],
+            keyboardType: _keyboardType(field.type),
+            decoration: InputDecoration(
+              labelText: '${field.name}${field.required ? ' *' : ''}',
+              helperText: field.many ? 'IDs separados por coma' : field.type,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        );
+      }),
+      if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+    ]))),
+    actions: [TextButton(onPressed: busy ? null : () => Navigator.pop(context), child: const Text('Cancelar')),
+      FilledButton(onPressed: busy ? null : _save, child: Text(busy ? 'Guardando…' : 'Guardar'))],
+  );
+
+  @override void dispose() { for (final controller in controllers.values) { controller.dispose(); } super.dispose(); }
+}

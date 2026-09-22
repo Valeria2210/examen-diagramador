@@ -14,6 +14,7 @@ interface ToolbarProps {
   onShareProject: () => void;
   onHistory: () => void;
   onBackend: () => void;
+  onFlutter: () => void;
   readOnly: boolean;
   canShare: boolean;
   loading: boolean;
@@ -41,6 +42,7 @@ export function Toolbar({
     onShareProject,
     onHistory,
   onBackend,
+  onFlutter,
   readOnly,
   canShare,
   loading,
@@ -194,6 +196,9 @@ export function Toolbar({
         <button className="toolbar-btn" onClick={() => onExportImage("jpg")} disabled={currentDiagramId === null || loading || exportingImage}>Descargar JPG</button>
         <button className="toolbar-btn toolbar-btn-backend" onClick={onBackend} disabled={currentDiagramId === null || saving || loading || saveError}>
           Generar backend
+        </button>
+        <button className="toolbar-btn toolbar-btn-backend" onClick={onFlutter} disabled={currentDiagramId === null || saving || loading || saveError}>
+          Generar Flutter
         </button>
         <button className="toolbar-btn" onClick={onExportXmi} disabled={currentDiagramId === null}>
           Exportar XMI

@@ -1,0 +1,26 @@
+import 'package:flutter/material.dart';
+{% if incluir_ia_local %}
+import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_gemma_mediapipe/flutter_gemma_mediapipe.dart';
+{% endif %}
+import 'screens/login_screen.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+{% if incluir_ia_local %}
+  await FlutterGemma.initialize(inferenceEngines: const [MediaPipeEngine()]);
+  FlutterGemma.logLevel = GemmaLogLevel.none;
+{% endif %}
+  runApp(const GeneratedMobileApp());
+}
+
+class GeneratedMobileApp extends StatelessWidget {
+  const GeneratedMobileApp({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: '{{ proyecto.nombre }}',
+    theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo), useMaterial3: true),
+    home: const LoginScreen(),
+  );
+}

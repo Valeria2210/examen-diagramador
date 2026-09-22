@@ -1,0 +1,77 @@
+import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import '../app_config.dart';
+
+class ApiException implements Exception {
+  ApiException(this.status, this.message, [this.fields = const {}]);
+  final int status;
+  final String message;
+  final Map<String, dynamic> fields;
+  @override String toString() => message;
+}
+
+class ApiClient {
+  ApiClient({http.Client? client}) : _client = client ?? http.Client();
+  final http.Client _client;
+  final _storage = const FlutterSecureStorage();
+  String? _token;
+
+  Future<void> restore() async => _token = await _storage.read(key: 'access_token');
+  bool get authenticated => _token != null;
+
+  Future<void> login(String username, String password) async {
+    final data = await _send('POST', '/api/auth/login', body: {'username': username, 'password': password}, authenticated: false);
+    _token = data['token'] as String;
+    await _storage.write(key: 'access_token', value: _token);
+  }
+
+  Future<void> register(String username, String password) async {
+    final data = await _send('POST', '/api/auth/register', body: {'username': username, 'password': password}, authenticated: false);
+    _token = data['token'] as String;
+    await _storage.write(key: 'access_token', value: _token);
+  }
+
+  Future<void> logout() async {
+    try { await _send('POST', '/api/auth/logout'); } finally {
+      _token = null;
+      await _storage.delete(key: 'access_token');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> list(String route, {int page = 0}) async {
+    final data = await _send('GET', '$route?page=$page&size=50');
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    if (data is Map && data['content'] is List) return (data['content'] as List).cast<Map<String, dynamic>>();
+    return const [];
+  }
+
+  Future<Map<String, dynamic>> create(String route, Map<String, dynamic> body) async =>
+      (await _send('POST', route, body: body)).cast<String, dynamic>();
+  Future<Map<String, dynamic>> update(String route, Object id, Map<String, dynamic> body) async =>
+      (await _send('PUT', '$route/$id', body: body)).cast<String, dynamic>();
+  Future<void> delete(String route, Object id) async => _send('DELETE', '$route/$id');
+
+  Future<dynamic> _send(String method, String path, {Map<String, dynamic>? body, bool authenticated = true}) async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (authenticated && _token != null) headers['Authorization'] = 'Bearer $_token';
+    final request = http.Request(method, Uri.parse('${AppConfig.apiBaseUrl}$path'))
+      ..headers.addAll(headers);
+    if (body != null) request.body = jsonEncode(body);
+    final streamed = await _client.send(request).timeout(const Duration(seconds: 30));
+    final response = await http.Response.fromStream(streamed);
+    final dynamic decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final map = decoded is Map<String, dynamic> ? decoded : const <String, dynamic>{};
+      if (response.statusCode == 401) {
+        _token = null;
+        await _storage.delete(key: 'access_token');
+      }
+      throw ApiException(response.statusCode, (map['message'] ?? map['detail'] ?? 'Error HTTP ${response.statusCode}').toString(),
+          (map['fields'] as Map?)?.cast<String, dynamic>() ?? const {});
+    }
+    return decoded;
+  }
+}
+
+final apiClient = ApiClient();

@@ -1,0 +1,56 @@
+[CmdletBinding()]
+param([switch]$Run)
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+Push-Location $PSScriptRoot
+try {
+    if (-not (Get-Command flutter -CommandType Application -ErrorAction SilentlyContinue)) {
+        throw 'Instala Flutter estable y agrega flutter/bin al PATH.'
+    }
+    $backup = Join-Path ([IO.Path]::GetTempPath()) ('flutter-generated-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $backup | Out-Null
+    try {
+        Copy-Item -LiteralPath '.\lib' -Destination $backup -Recurse
+        Copy-Item -LiteralPath '.\pubspec.yaml' -Destination $backup
+        Copy-Item -LiteralPath '.\analysis_options.yaml' -Destination $backup
+        & flutter create --platforms=android,ios --org com.generado --project-name {{ proyecto.nombre|lower }}_mobile .
+        if ($LASTEXITCODE -ne 0) { throw 'flutter create falló.' }
+        Remove-Item -LiteralPath '.\lib' -Recurse -Force
+        Copy-Item -LiteralPath (Join-Path $backup 'lib') -Destination '.\lib' -Recurse
+        Copy-Item -LiteralPath (Join-Path $backup 'pubspec.yaml') -Destination '.\pubspec.yaml' -Force
+        Copy-Item -LiteralPath (Join-Path $backup 'analysis_options.yaml') -Destination '.\analysis_options.yaml' -Force
+    } finally {
+        if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
+    }
+    $manifest = '.\android\app\src\main\AndroidManifest.xml'
+    $xml = Get-Content -LiteralPath $manifest -Raw
+    if ($xml -notmatch 'android.permission.INTERNET') {
+        $manifestTag = '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+        $rootTag = '<manifest xmlns:android="http://schemas.android.com/apk/res/android"{% if incluir_ia_local %} xmlns:tools="http://schemas.android.com/tools"{% endif %}>'
+        $permissions = $rootTag + "`n    <uses-permission android:name=`"android.permission.INTERNET`" />" +
+{% if incluir_ia_local %}
+            "`n    <uses-permission android:name=`"android.permission.POST_NOTIFICATIONS`" />" +
+            "`n    <uses-permission android:name=`"android.permission.FOREGROUND_SERVICE_DATA_SYNC`" />"
+{% else %}
+            ''
+{% endif %}
+        $xml = $xml.Replace($manifestTag, $permissions)
+        $xml = $xml.Replace('<application', '<application android:usesCleartextTraffic="true"')
+{% if incluir_ia_local %}
+        $service = @"
+        <service android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync" tools:node="merge" />
+"@
+        $xml = $xml.Replace('</application>', $service + "`n    </application>")
+{% endif %}
+        Set-Content -LiteralPath $manifest -Value $xml -Encoding UTF8
+    }
+    & flutter pub get
+    if ($LASTEXITCODE -ne 0) { throw 'flutter pub get falló.' }
+    & flutter analyze
+    if ($LASTEXITCODE -ne 0) { throw 'flutter analyze encontró errores.' }
+    if ($Run) {
+        & flutter run --dart-define-from-file=config.json
+        if ($LASTEXITCODE -ne 0) { throw 'flutter run falló.' }
+    }
+} finally { Pop-Location }

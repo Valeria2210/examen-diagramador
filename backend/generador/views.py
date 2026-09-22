@@ -1,6 +1,8 @@
 import logging
+import json
 from time import perf_counter
 from pathlib import Path
+from zipfile import ZipFile, BadZipFile
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -14,10 +16,11 @@ from diagrams.serializers import DiagramDetailSerializer
 from diagrams.views import lock_diagram
 from .exceptions import GeneradorBaseError, ValidacionIRError
 from .models import GeneracionBackend
-from .serializers import GenerarBackendRequestSerializer
+from .serializers import GenerarBackendRequestSerializer, GenerarFlutterRequestSerializer
 from .services.ir_builder import IRBuilder
 from .services.validator import ValidadorIR
 from .services.code_generator import CodeGenerator
+from .services.flutter_generator import FlutterGenerator
 from .services.delivery import ruta_zip, sha256_archivo, expiracion
 from .throttles import GenerationThrottle
 
@@ -82,6 +85,61 @@ class GenerarBackendView(APIView):
 
 class ValidarBackendView(GenerarBackendView):
     solo_ir = True
+
+
+class GenerarFlutterView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [GenerationThrottle]
+
+    def post(self, request):
+        inicio = perf_counter()
+        serializer = GenerarFlutterRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"error": "Datos de solicitud inválidos", "detalles": serializer.errors}, status=400)
+        datos = serializer.validated_data
+        diagrama = get_object_or_404(Diagram, pk=datos["diagrama_id"], project__owner=request.user)
+        backend = GeneracionBackend.objects.filter(diagrama=diagrama, usuario=request.user,
+            metricas__alcance="completo").order_by("-fecha_creacion").first()
+        if backend is None:
+            return Response({"error": "Primero genera el backend completo de este diagrama."}, status=409)
+        if timezone.now() >= expiracion(backend):
+            return Response({"error": "El último backend expiró. Genéralo nuevamente antes de crear Flutter."}, status=409)
+        try:
+            backend_path = ruta_zip(backend.ruta_archivo)
+            with ZipFile(backend_path) as archive:
+                ir = json.loads(archive.read("ir.json"))
+            ValidadorIR(ir).validar()
+        except (OSError, KeyError, ValueError, BadZipFile, json.JSONDecodeError, GeneradorBaseError):
+            return Response({"error": "El último backend no está disponible o no es válido; genéralo nuevamente."}, status=409)
+
+        nombre_archivo = None
+        try:
+            generator = FlutterGenerator(ir, datos["api_base_url"], datos["incluir_ia_local"], backend.pk)
+            nombre_archivo = generator.generar()
+            path = ruta_zip(nombre_archivo)
+            with path.open("rb") as source:
+                digest = sha256_archivo(source)
+            metricas = {**generator.metricas, "duracion_total_ms": round((perf_counter() - inicio) * 1000, 2)}
+            generacion = GeneracionBackend.objects.create(diagrama=diagrama, usuario=request.user,
+                ruta_archivo=nombre_archivo, entidades=[e["nombre"] for e in ir["entidades"]],
+                sha256=digest, tamano_bytes=path.stat().st_size, metricas=metricas)
+        except GeneradorBaseError as exc:
+            logger.warning("Error generando Flutter para diagrama %s: %s", diagrama.pk, exc)
+            return Response({"error": str(exc)}, status=exc.codigo_http)
+        except Exception:
+            if nombre_archivo:
+                try: (Path(settings.GENERADOR_TMP_DIR) / nombre_archivo).unlink(missing_ok=True)
+                except OSError: logger.exception("No se pudo limpiar el ZIP Flutter fallido")
+            logger.exception("Error inesperado generando Flutter para diagrama %s", diagrama.pk)
+            return Response({"error": "Ocurrió un error inesperado al preparar Flutter."}, status=500)
+        return Response({
+            "mensaje": "Frontend Flutter generado exitosamente", "estado": "FLUTTER_GENERADO",
+            "compilacion": "PENDIENTE", "metricas": metricas, "sha256": generacion.sha256,
+            "tamano_bytes": generacion.tamano_bytes, "expira_en": expiracion(generacion),
+            "generacion_id": str(generacion.pk), "backend_generacion_id": str(backend.pk),
+            "zip_url": request.build_absolute_uri(f"/api/generador/descargar/{nombre_archivo}/"),
+            "entidades_generadas": generacion.entidades,
+        }, status=201)
 
 
 class DescargarBackendView(APIView):

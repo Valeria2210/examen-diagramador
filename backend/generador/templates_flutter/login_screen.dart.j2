@@ -1,0 +1,48 @@
+import 'package:flutter/material.dart';
+import '../services/api_client.dart';
+import 'home_screen.dart';
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+  @override State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final user = TextEditingController();
+  final password = TextEditingController();
+  bool registerMode = false;
+  bool busy = false;
+  String? error;
+
+  @override void initState() { super.initState(); _restore(); }
+  Future<void> _restore() async {
+    await apiClient.restore();
+    if (mounted && apiClient.authenticated) _openHome();
+  }
+  void _openHome() => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+  Future<void> _submit() async {
+    setState(() { busy = true; error = null; });
+    try {
+      if (registerMode) { await apiClient.register(user.text.trim(), password.text); }
+      else { await apiClient.login(user.text.trim(), password.text); }
+      if (mounted) _openHome();
+    } catch (e) { if (mounted) setState(() => error = e.toString()); }
+    finally { if (mounted) setState(() => busy = false); }
+  }
+  @override Widget build(BuildContext context) => Scaffold(
+    body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Padding(
+      padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('{{ proyecto.nombre }}', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 24),
+        TextField(controller: user, decoration: const InputDecoration(labelText: 'Usuario', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder())),
+        if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: Colors.red))),
+        const SizedBox(height: 16),
+        FilledButton(onPressed: busy ? null : _submit, child: Text(busy ? 'Conectando…' : registerMode ? 'Crear cuenta' : 'Ingresar')),
+        TextButton(onPressed: busy ? null : () => setState(() => registerMode = !registerMode),
+          child: Text(registerMode ? 'Ya tengo cuenta' : 'Crear una cuenta')),
+      ]),
+    ))),
+  );
+}
